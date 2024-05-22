@@ -105,9 +105,26 @@ model Contributor {
     updatedAt    DateTime          @updatedAt
 }
 
+enum StoryStatus {
+    TODO
+    INPROGRESS
+    BLOCKED
+    DONE
+}
+
+type StorySubTask {
+    id   String
+    task String
+    done Boolean
+}
+
 model Story {
-    id         String @id @default(auto()) @map("_id") @db.ObjectId
-    projectId  String @db.ObjectId
-    assignorId String @db.ObjectId
-    assignee   String @db.ObjectId
+    id          String         @id @default(auto()) @map("_id") @db.ObjectId
+    projectId   String         @db.ObjectId
+    assignorId  String         @db.ObjectId
+    assigneeId  String         @db.ObjectId
+    title       String
+    description String
+    status      StoryStatus
+    subTasks    StorySubTask[]
 }

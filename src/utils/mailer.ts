@@ -1,9 +1,12 @@
-import nodemailer from "nodemailer";
+import nodemailer from 'nodemailer';
+import Mail from 'nodemailer/lib/mailer';
 
 class Mailer {
+    transporter: nodemailer.Transporter;
+    baseUiURL: string | undefined;
     constructor() {
         this.transporter = nodemailer.createTransport({
-            host: "smtp.gmail.com",
+            host: 'smtp.gmail.com',
             port: 587,
             secure: false,
             auth: {
@@ -13,7 +16,7 @@ class Mailer {
         });
         this.baseUiURL = process.env.UI_BASE_URL;
     }
-    send = async (mailOptions) => {
+    send = async (mailOptions: Mail.Options) => {
         try {
             await this.transporter.sendMail(mailOptions);
         } catch (error) {
@@ -21,11 +24,11 @@ class Mailer {
         }
     };
 
-    sendActivationMail = async (emailAddress, token) => {
+    sendActivationMail = async (emailAddress: string, token: string) => {
         try {
             await this.send({
                 to: emailAddress,
-                subject: "Projectify App | Activate Your Account",
+                subject: 'Projectify App | Activate Your Account',
                 html: `<a style="color: red;" href="${this.baseUiURL}/admin/activate?activationToken=${token}">Verify your email</a>`,
             });
         } catch (error) {
@@ -33,23 +36,30 @@ class Mailer {
         }
     };
 
-    sendPasswordResetToken = async (emailAddress, token) => {
+    sendPasswordResetToken = async (
+        emailAddress: string,
+        token: string,
+        user: 'admin' | 'team-member',
+    ) => {
         try {
             this.send({
                 to: emailAddress,
-                subject: "Projectify App | Reset Password",
-                html: `<a href="${this.baseUiURL}/admin/reset-password?passwordResetToken=${token}">Reset Your Password</a>`,
+                subject: 'Projectify App | Reset Password',
+                html: `<a href="${this.baseUiURL}/${user}/reset-password?passwordResetToken=${token}">Reset Your Password</a>`,
             });
         } catch (error) {
             throw error;
         }
     };
 
-    sendCreatePasswordInviteToTeamMember = async (emailAddress, token) => {
+    sendCreatePasswordInviteToTeamMember = async (
+        emailAddress: string,
+        token: string,
+    ) => {
         try {
             await this.send({
                 to: emailAddress,
-                subject: "Projectify App | Welcome to the team",
+                subject: 'Projectify App | Welcome to the team',
                 html: `<a href="${this.baseUiURL}/team-member/create-password?inviteToken=${token}">Click to create a password</a>`,
             });
         } catch (error) {

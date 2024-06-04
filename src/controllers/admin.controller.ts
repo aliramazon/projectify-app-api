@@ -1,0 +1,216 @@
+import { Request, Response } from 'express';
+import { Admin, Prisma } from '@prisma/client';
+import { adminService } from '../services';
+import { catchAsync, CustomError } from '../utils';
+import {
+    EmptyParams,
+    ResBody,
+    Login,
+    EmptyBody,
+    AdminActivationQuery,
+} from '../types';
+
+class AdminController {
+    signUp = catchAsync(
+        async (
+            req: Request<EmptyParams, ResBody, Prisma.AdminCreateInput>,
+            res: Response,
+        ) => {
+            const { body } = req;
+
+            const input: Prisma.AdminCreateInput = {
+                email: body.email,
+                preferredFirstName: body.preferredFirstName,
+                firstName: body.firstName,
+                lastName: body.lastName,
+                password: body.password,
+            };
+
+            if (body.company && body.company.name && body.company.position) {
+                input.company = {
+                    name: body.company.name,
+                    position: body.company.position,
+                };
+            }
+
+            await adminService.signUp(input);
+            res.status(201).json({
+                message:
+                    'We have just sent you an email. Please,  Activate your account.',
+            });
+        },
+    );
+
+    login = catchAsync(
+        async (req: Request<EmptyParams, ResBody, Login>, res: Response) => {
+            const { body } = req;
+
+            const input: Login = {
+                email: body.email,
+                password: body.password,
+            };
+
+            const jwt = await adminService.login(input);
+
+            res.status(200).json({
+                token: jwt,
+            });
+        },
+    );
+
+    activate = catchAsync(
+        async (
+            req: Request<EmptyParams, ResBody, EmptyBody, qs.ParsedQs>,
+            res,
+        ) => {
+            const { activationToken } = req.query as AdminActivationQuery;
+
+            if (!activationToken) {
+                throw new CustomError('Activation Token is missing', 400);
+            }
+
+            await adminService.activate(activationToken);
+
+            res.status(200).json({
+                message: 'Success',
+            });
+        },
+    );
+
+    forgotPassword = catchAsync(async (req, res) => {
+        const {
+            body: { email },
+        } = req;
+
+        await adminService.forgotPassword(email);
+
+        res.status(200).json({
+            message:
+                'We emailed you an instruction to reset your password. Follow it!',
+        });
+    });
+
+    resetPassword = catchAsync(async (req, res) => {
+        const {
+            body: { password, passwordConfirm },
+            headers,
+        } = req;
+        if (!password || !passwordConfirm) {
+            throw new CustomError(
+                'Both Password and Pasword Confirmation are required',
+                400,
+            );
+        }
+
+        if (password !== passwordConfirm) {
+            throw new CustomError(
+                'Password and Password Confirmation does not match',
+                400,
+            );
+        }
+        if (!headers.authorization) {
+            throw new CustomError('Password Reset Token is missing', 400);
+        }
+
+        const [bearer, token] = headers.authorization.split(' ');
+        if (bearer !== 'Bearer' || !token) {
+            throw new CustomError('Invalid Password Reset Token', 400);
+        }
+
+        await adminService.resetPassword(token, password);
+        res.status(200).json({
+            message: 'Password successfully updated',
+        });
+    });
+
+    getMe = catchAsync(async (req, res) => {
+        const { adminId } = req;
+
+        const me = await adminService.getMe(adminId);
+
+        res.status(200).json({
+            data: me,
+        });
+    });
+
+    createTask = catchAsync(async (req, res) => {
+        const { adminId, body } = req;
+
+        const input = {
+            title: body.title,
+            description: body.description,
+            due: body.due,
+        };
+
+        if (!input.title || !input.due) {
+            throw new CustomError('Both Title and Due Date are required', 404);
+        }
+
+        const data = await adminService.createTask(adminId, input);
+
+        res.status(201).json({
+            data,
+        });
+    });
+
+    getTasks = catchAsync(async (req, res) => {
+        const { adminId } = req;
+
+        if (!adminId) {
+            throw new CustomError(
+                'Forbidden: You are not authorized to perform this action',
+                403,
+            );
+        }
+
+        const tasks = await adminService.getTasks(adminId);
+
+        res.status(200).json({
+            data: tasks,
+        });
+    });
+
+    getTask = catchAsync(async (req, res) => {
+        const { adminId, params } = req;
+
+        const task = await adminService.getTask(adminId, params.taskId);
+
+        res.status(200).json({
+            data: task,
+        });
+    });
+
+    deleteTask = catchAsync(async (req, res) => {
+        const { adminId, params } = req;
+
+        await adminService.deleteTask(adminId, params.taskId);
+        res.status(204).send();
+    });
+
+    updateTask = catchAsync(async (req, res) => {
+        const { adminId, params, body } = req;
+
+        const input = {};
+        if (body.status) {
+            input.status = body.status;
+        }
+        if (body.title) {
+            input.title = body.title;
+        }
+        if (body.description) {
+            input.description = body.description;
+        }
+        if (body.due) {
+            input.due = body.due;
+        }
+
+        if (!Object.keys(input).length) {
+            throw new CustomError('Update data is required, 400');
+        }
+
+        await adminService.updateTask(adminId, params.taskId, input);
+        res.status(204).send();
+    });
+}
+
+export const adminController = new AdminController();

@@ -1,13 +1,18 @@
-import { Request, Response } from 'express';
-import { Admin, Prisma } from '@prisma/client';
+import { NextFunction, Request, Response } from 'express';
+import { Prisma } from '@prisma/client';
 import { adminService } from '../services';
 import { catchAsync, CustomError } from '../utils';
 import {
     EmptyParams,
     ResBody,
-    Login,
+    LoginRequestBody,
     EmptyBody,
     AdminActivationQuery,
+    ForgetPasswordRequestBody,
+    ResetPasswordRequestBody,
+    AdminCreateTaskRequestBody,
+    AdminTaskByIdRequestParams,
+    AdminUpdateTaskRequestBody,
 } from '../types';
 
 class AdminController {
@@ -42,10 +47,13 @@ class AdminController {
     );
 
     login = catchAsync(
-        async (req: Request<EmptyParams, ResBody, Login>, res: Response) => {
+        async (
+            req: Request<EmptyParams, ResBody, LoginRequestBody>,
+            res: Response,
+        ) => {
             const { body } = req;
 
-            const input: Login = {
+            const input: LoginRequestBody = {
                 email: body.email,
                 password: body.password,
             };
@@ -60,16 +68,16 @@ class AdminController {
 
     activate = catchAsync(
         async (
-            req: Request<EmptyParams, ResBody, EmptyBody, qs.ParsedQs>,
-            res,
+            req: Request<EmptyParams, ResBody, EmptyBody, AdminActivationQuery>,
+            res: Response,
         ) => {
-            const { activationToken } = req.query as AdminActivationQuery;
+            const { query } = req;
 
-            if (!activationToken) {
+            if (!query.activationToken) {
                 throw new CustomError('Activation Token is missing', 400);
             }
 
-            await adminService.activate(activationToken);
+            await adminService.activate(query.activationToken);
 
             res.status(200).json({
                 message: 'Success',
@@ -77,140 +85,171 @@ class AdminController {
         },
     );
 
-    forgotPassword = catchAsync(async (req, res) => {
+    forgotPassword = catchAsync(
+        async (
+            req: Request<EmptyParams, ResBody, ForgetPasswordRequestBody>,
+            res: Response<ResBody>,
+        ) => {
+            await adminService.forgotPassword(req.body.email);
+
+            res.status(200).json({
+                message:
+                    'We emailed you an instruction to reset your password.',
+            });
+        },
+    );
+
+    resetPassword = catchAsync(
+        async (
+            req: Request<EmptyParams, ResBody, ResetPasswordRequestBody>,
+            res,
+        ) => {
+            const {
+                body: { password, passwordConfirm },
+                headers,
+            } = req;
+
+            if (!headers.authorization) {
+                throw new CustomError('Password Reset Token is missing', 400);
+            }
+
+            const [bearer, token] = headers.authorization.split(' ');
+            if (bearer !== 'Bearer' || !token) {
+                throw new CustomError('Invalid Password Reset Token', 400);
+            }
+
+            await adminService.resetPassword(
+                { password, passwordConfirm },
+                token,
+            );
+
+            res.status(200).json({
+                message: 'Password successfully updated',
+            });
+        },
+    );
+
+    getMe = catchAsync(async (req: Request, res: Response) => {
         const {
-            body: { email },
+            locals: { user },
         } = req;
 
-        await adminService.forgotPassword(email);
-
-        res.status(200).json({
-            message:
-                'We emailed you an instruction to reset your password. Follow it!',
-        });
-    });
-
-    resetPassword = catchAsync(async (req, res) => {
-        const {
-            body: { password, passwordConfirm },
-            headers,
-        } = req;
-        if (!password || !passwordConfirm) {
-            throw new CustomError(
-                'Both Password and Pasword Confirmation are required',
-                400,
-            );
-        }
-
-        if (password !== passwordConfirm) {
-            throw new CustomError(
-                'Password and Password Confirmation does not match',
-                400,
-            );
-        }
-        if (!headers.authorization) {
-            throw new CustomError('Password Reset Token is missing', 400);
-        }
-
-        const [bearer, token] = headers.authorization.split(' ');
-        if (bearer !== 'Bearer' || !token) {
-            throw new CustomError('Invalid Password Reset Token', 400);
-        }
-
-        await adminService.resetPassword(token, password);
-        res.status(200).json({
-            message: 'Password successfully updated',
-        });
-    });
-
-    getMe = catchAsync(async (req, res) => {
-        const { adminId } = req;
-
-        const me = await adminService.getMe(adminId);
+        const me = await adminService.getMe(user?.userId || '');
 
         res.status(200).json({
             data: me,
         });
     });
 
-    createTask = catchAsync(async (req, res) => {
-        const { adminId, body } = req;
+    createTask = catchAsync(
+        async (
+            req: Request<EmptyParams, ResBody, AdminCreateTaskRequestBody>,
+            res,
+        ) => {
+            const {
+                locals: { user },
+                body,
+            } = req;
 
-        const input = {
-            title: body.title,
-            description: body.description,
-            due: body.due,
-        };
+            const input = {
+                title: body.title,
+                description: body.description,
+                due: body.due,
+            };
 
-        if (!input.title || !input.due) {
-            throw new CustomError('Both Title and Due Date are required', 404);
-        }
+            if (!input.title || !input.due) {
+                throw new CustomError(
+                    'Both Title and Due Date are required',
+                    404,
+                );
+            }
 
-        const data = await adminService.createTask(adminId, input);
+            const data = await adminService.createTask(
+                user?.userId || '',
+                input,
+            );
 
-        res.status(201).json({
-            data,
-        });
-    });
+            res.status(201).json({
+                data,
+            });
+        },
+    );
 
     getTasks = catchAsync(async (req, res) => {
-        const { adminId } = req;
+        const {
+            locals: { user },
+        } = req;
 
-        if (!adminId) {
-            throw new CustomError(
-                'Forbidden: You are not authorized to perform this action',
-                403,
-            );
-        }
-
-        const tasks = await adminService.getTasks(adminId);
+        const tasks = await adminService.getTasks(user?.userId || '');
 
         res.status(200).json({
             data: tasks,
         });
     });
 
-    getTask = catchAsync(async (req, res) => {
-        const { adminId, params } = req;
+    deleteTask = catchAsync(
+        async (req: Request<AdminTaskByIdRequestParams>, res) => {
+            const {
+                params,
+                locals: { user },
+            } = req;
 
-        const task = await adminService.getTask(adminId, params.taskId);
+            await adminService.deleteTask(user?.userId || '', params.taskId);
+            res.status(204).send();
+        },
+    );
 
-        res.status(200).json({
-            data: task,
-        });
-    });
+    updateTask = catchAsync(
+        async (
+            req: Request<
+                AdminTaskByIdRequestParams,
+                ResBody,
+                AdminUpdateTaskRequestBody
+            >,
+            res,
+        ) => {
+            const {
+                params,
+                body,
+                locals: { user },
+            } = req;
 
-    deleteTask = catchAsync(async (req, res) => {
-        const { adminId, params } = req;
+            const updateData = this.buildTaskUpdateData(body);
 
-        await adminService.deleteTask(adminId, params.taskId);
-        res.status(204).send();
-    });
+            if (!Object.keys(updateData).length) {
+                throw new CustomError('Update data is required', 400);
+            }
 
-    updateTask = catchAsync(async (req, res) => {
-        const { adminId, params, body } = req;
+            await adminService.updateTask(
+                user?.userId || '',
+                params.taskId,
+                updateData,
+            );
+            res.status(204).send();
+        },
+    );
 
-        const input = {};
+    private buildTaskUpdateData = (body: AdminUpdateTaskRequestBody) => {
+        const data: AdminUpdateTaskRequestBody = {};
+
         if (body.status) {
-            input.status = body.status;
+            data.status = body.status;
         }
+
         if (body.title) {
-            input.title = body.title;
+            data.title = body.title;
         }
+
         if (body.description) {
-            input.description = body.description;
+            data.description = body.description;
         }
+
         if (body.due) {
-            input.due = body.due;
+            data.due = body.due;
         }
 
-        if (!Object.keys(input).length) {
-            throw new CustomError('Update data is required, 400');
-        }
-
-        await adminService.updateTask(adminId, params.taskId, input);
-        res.status(204).send();
-    });
+        return data;
+    };
 }
 
 export const adminController = new AdminController();

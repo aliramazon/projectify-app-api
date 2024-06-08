@@ -1,9 +1,17 @@
-import { AdminAccountStatus, Prisma } from '@prisma/client';
+import { AdminAccountStatus, Prisma, TaskStatus } from '@prisma/client';
 import jwt from 'jsonwebtoken';
 import { v4 as uuid } from 'uuid';
 import { prisma } from '../prisma';
 import { crypto, mailer, bcrypt, date, CustomError } from '../utils';
-import { AdminActivationQuery, Login, Roles } from '../types';
+import {
+    AdminActivationQuery,
+    AdminCreateTaskRequestBody,
+    AdminUpdateTaskRequestBody,
+    ForgetPasswordRequestBody,
+    LoginRequestBody,
+    ResetPasswordRequestBody,
+    Roles,
+} from '../types';
 
 class AdminService {
     signUp = async (input: Prisma.AdminCreateInput) => {
@@ -27,7 +35,7 @@ class AdminService {
         }
     };
 
-    login = async (input: Login) => {
+    login = async (input: LoginRequestBody) => {
         const admin = await prisma.admin.findFirst({
             where: {
                 email: input.email,
@@ -72,7 +80,7 @@ class AdminService {
 
         const token = jwt.sign(
             {
-                admin: admin.id,
+                userId: admin.id,
                 role: Roles.ADMIN,
             },
             process.env.JWT_SECRET as jwt.Secret,
@@ -114,7 +122,7 @@ class AdminService {
         });
     };
 
-    forgotPassword = async (email) => {
+    forgotPassword = async (email: ForgetPasswordRequestBody['email']) => {
         const admin = await prisma.admin.findFirst({
             where: {
                 email,
@@ -144,10 +152,23 @@ class AdminService {
             },
         });
 
-        await mailer.sendPasswordResetToken(email, passwordResetToken);
+        await mailer.sendPasswordResetToken(
+            email,
+            passwordResetToken,
+            Roles.ADMIN,
+        );
     };
 
-    resetPassword = async (token, password) => {
+    resetPassword = async (
+        passwords: ResetPasswordRequestBody,
+        token: string,
+    ) => {
+        if (passwords.password !== passwords.passwordConfirm) {
+            throw new CustomError(
+                'Password and Password Confirmation does not match',
+                400,
+            );
+        }
         const hashedPasswordResetToken = crypto.hash(token);
         const admin = await prisma.admin.findFirst({
             where: {
@@ -167,6 +188,13 @@ class AdminService {
             );
         }
 
+        if (!admin.passwordResetTokenExpirationDate) {
+            throw new CustomError(
+                'Server error: Password reset token expiration date is missing. Cannot update the password',
+                500,
+            );
+        }
+
         const currentTime = new Date();
         const tokenExpDate = new Date(admin.passwordResetTokenExpirationDate);
 
@@ -183,14 +211,14 @@ class AdminService {
                 id: admin.id,
             },
             data: {
-                password: await bcrypt.hash(password),
+                password: await bcrypt.hash(passwords.password),
                 passwordResetToken: null,
                 passwordResetTokenExpirationDate: null,
             },
         });
     };
 
-    getMe = async (adminId) => {
+    getMe = async (adminId: string) => {
         const admin = await prisma.admin.findUnique({
             where: {
                 id: adminId,
@@ -201,6 +229,8 @@ class AdminService {
                 preferredFirstName: true,
                 email: true,
                 id: true,
+                company: true,
+                role: true,
             },
         });
 
@@ -208,22 +238,14 @@ class AdminService {
             throw new CustomError('Admin does not exist', 404);
         }
 
-        const company = await prisma.company.findFirst({
-            where: { adminId: admin.id },
-            select: {
-                name: true,
-                position: true,
-            },
-        });
-
-        return { ...admin, company, role: 'admin' };
+        return admin;
     };
 
-    createTask = async (adminId, input) => {
+    createTask = async (adminId: string, input: AdminCreateTaskRequestBody) => {
         const id = uuid();
         const task = {
             ...input,
-            status: 'TODO',
+            status: TaskStatus.TODO,
             id,
         };
 
@@ -241,7 +263,7 @@ class AdminService {
         return task;
     };
 
-    getTasks = async (adminId) => {
+    getTasks = async (adminId: string) => {
         const tasks = await prisma.admin.findUnique({
             where: {
                 id: adminId,
@@ -255,7 +277,7 @@ class AdminService {
         return tasks;
     };
 
-    getTask = async (adminId, taskId) => {
+    deleteTask = async (adminId: string, taskId: string) => {
         const admin = await prisma.admin.findUnique({
             where: {
                 id: adminId,
@@ -266,24 +288,9 @@ class AdminService {
             },
         });
 
-        const task = admin.tasks.find((task) => task.id === taskId);
-        if (!task) {
-            throw new CustomError('Task not found', 404);
+        if (!admin) {
+            throw new CustomError('Admin  does not exist', 404);
         }
-
-        return task;
-    };
-
-    deleteTask = async (adminId, taskId) => {
-        const admin = await prisma.admin.findUnique({
-            where: {
-                id: adminId,
-            },
-
-            select: {
-                tasks: true,
-            },
-        });
 
         const tasksToKeep = admin.tasks.filter((task) => task.id !== taskId);
 
@@ -302,7 +309,11 @@ class AdminService {
         });
     };
 
-    updateTask = async (adminId, taskId, input) => {
+    updateTask = async (
+        adminId: string,
+        taskId: string,
+        updateData: AdminUpdateTaskRequestBody,
+    ) => {
         const admin = await prisma.admin.findUnique({
             where: {
                 id: adminId,
@@ -313,25 +324,23 @@ class AdminService {
             },
         });
 
-        const tasksNotToUpdate = [];
-        let taskToUpdate = null;
+        if (!admin) {
+            throw new CustomError('Admin does not exist', 404);
+        }
+        let taskFound = false;
 
-        admin.tasks.forEach((task) => {
+        for (let i = 0; i < admin?.tasks.length; i++) {
+            const task = admin?.tasks[i];
             if (task.id === taskId) {
-                taskToUpdate = task;
-            } else {
-                tasksNotToUpdate.push(task);
+                admin.tasks[i] = { ...admin?.tasks[i], ...updateData };
+                taskFound = true;
+                break;
             }
-        });
-
-        if (!taskToUpdate) {
-            throw new CustomError('Task does not exist', 404);
         }
 
-        const updatedTask = {
-            ...taskToUpdate,
-            ...input,
-        };
+        if (!taskFound) {
+            throw new CustomError('Task does not exist', 404);
+        }
 
         await prisma.admin.update({
             where: {
@@ -339,7 +348,7 @@ class AdminService {
             },
 
             data: {
-                tasks: [...tasksNotToUpdate, updatedTask],
+                tasks: admin.tasks,
             },
         });
     };

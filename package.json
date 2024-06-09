@@ -6,7 +6,8 @@
     "scripts": {
         "start:dev": "NODE_ENV=development ts-node-dev --clear --respawn --transpile-only src/index.ts",
         "build": "tsc",
-        "start": " node dist/index.js",
+        "start": "node dist/index.js",
+        "build:prod": "npm install && npm run prisma:g && npm run build",
         "prisma:g": "npx prisma generate --schema=./src/prisma/schema.prisma",
         "db:p": "npx prisma db push --schema=./src/prisma/schema.prisma"
     },

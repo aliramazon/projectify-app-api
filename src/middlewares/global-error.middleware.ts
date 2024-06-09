@@ -1,6 +1,5 @@
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library.js';
-import { NextFunction, Response } from 'express';
-
+import { Request, Response } from 'express';
 import { CustomError } from '../utils';
 
 export class GlobalError {

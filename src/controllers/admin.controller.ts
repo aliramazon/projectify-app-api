@@ -1,4 +1,4 @@
-import { NextFunction, Request, Response } from 'express';
+import { Request, Response } from 'express';
 import { Prisma } from '@prisma/client';
 import { adminService } from '../services';
 import { catchAsync, CustomError } from '../utils';
@@ -134,7 +134,7 @@ class AdminController {
             locals: { user },
         } = req;
 
-        const me = await adminService.getMe(user?.userId || '');
+        const me = await adminService.getMe(user.id);
 
         res.status(200).json({
             data: me,
@@ -164,10 +164,7 @@ class AdminController {
                 );
             }
 
-            const data = await adminService.createTask(
-                user?.userId || '',
-                input,
-            );
+            const data = await adminService.createTask(user.id, input);
 
             res.status(201).json({
                 data,
@@ -180,7 +177,7 @@ class AdminController {
             locals: { user },
         } = req;
 
-        const tasks = await adminService.getTasks(user?.userId || '');
+        const tasks = await adminService.getTasks(user.id);
 
         res.status(200).json({
             data: tasks,
@@ -194,7 +191,7 @@ class AdminController {
                 locals: { user },
             } = req;
 
-            await adminService.deleteTask(user?.userId || '', params.taskId);
+            await adminService.deleteTask(user.id, params.taskId);
             res.status(204).send();
         },
     );
@@ -220,11 +217,7 @@ class AdminController {
                 throw new CustomError('Update data is required', 400);
             }
 
-            await adminService.updateTask(
-                user?.userId || '',
-                params.taskId,
-                updateData,
-            );
+            await adminService.updateTask(user.id, params.taskId, updateData);
             res.status(204).send();
         },
     );

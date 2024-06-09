@@ -1,22 +1,18 @@
-import { prisma } from "../prisma/index.js";
-import { CustomError } from "../utils/custom-error.js";
-import { objectifyArr } from "../utils/mixed.js";
-
-import { teamMemberService } from "./team-member.service.js";
+import { ContributorStatus, Prisma, ProjectStatus } from '@prisma/client';
+import { prisma } from '../prisma';
+import { CustomError, objectifyArr } from '../utils';
+import { teamMemberService } from './team-member.service';
 
 class ProjectService {
-    create = async (input, adminId) => {
+    create = async (data: Prisma.ProjectCreateInput) => {
         const project = await prisma.project.create({
-            data: {
-                ...input,
-                adminId: adminId,
-            },
+            data,
         });
 
         return project;
     };
 
-    getOne = async (id, adminId) => {
+    getOne = async (id: string, adminId: string) => {
         const project = await prisma.project.findUnique({
             where: {
                 id: id,
@@ -24,20 +20,24 @@ class ProjectService {
         });
 
         if (!project) {
-            throw new CustomError("Project does not exist", 404);
+            throw new CustomError('Project does not exist', 404);
         }
 
         if (project.adminId !== adminId) {
             throw new CustomError(
-                "Forbidden: You are not authorized to perform this action",
-                403
+                'Forbidden: You are not authorized to perform this action',
+                403,
             );
         }
 
         return project;
     };
 
-    update = async (id, adminId, update) => {
+    update = async (
+        id: string,
+        adminId: string,
+        update: Prisma.ProjectUpdateInput,
+    ) => {
         const project = await prisma.project.findUnique({
             where: {
                 id: id,
@@ -45,13 +45,13 @@ class ProjectService {
         });
 
         if (!project) {
-            throw new CustomError("Project does not exist", 404);
+            throw new CustomError('Project does not exist', 404);
         }
 
         if (project.adminId !== adminId) {
             throw new CustomError(
-                "Forbidden: You are not authorized to perform this action",
-                403
+                'Forbidden: You are not authorized to perform this action',
+                403,
             );
         }
 
@@ -65,7 +65,7 @@ class ProjectService {
         });
     };
 
-    getAll = async (adminId) => {
+    getAll = async (adminId: string) => {
         const projects = await prisma.project.findMany({
             where: {
                 adminId: adminId,
@@ -74,8 +74,11 @@ class ProjectService {
 
         const contributors = await Promise.all(
             projects.map((project) =>
-                this.getContributorsByProjectId(project.id, "ACTIVE")
-            )
+                this.getContributorsByProjectIdAndStatus(
+                    project.id,
+                    ContributorStatus.ACTIVE,
+                ),
+            ),
         );
 
         const projectsWithNumberOfContributors = projects.map(
@@ -84,13 +87,17 @@ class ProjectService {
                     ...project,
                     numberOfContributors: contributors[idx].length,
                 };
-            }
+            },
         );
 
         return projectsWithNumberOfContributors;
     };
 
-    changeStatus = async (id, adminId, status) => {
+    changeStatus = async (
+        id: string,
+        adminId: string,
+        status: ProjectStatus,
+    ) => {
         const project = await prisma.project.findUnique({
             where: {
                 id: id,
@@ -98,13 +105,13 @@ class ProjectService {
         });
 
         if (!project) {
-            throw new CustomError("Project does not exist", 404);
+            throw new CustomError('Project does not exist', 404);
         }
 
         if (project.adminId !== adminId) {
             throw new CustomError(
-                "Forbidden: You are not authorized to perform this action",
-                403
+                'Forbidden: You are not authorized to perform this action',
+                403,
             );
         }
         await prisma.project.update({
@@ -119,11 +126,15 @@ class ProjectService {
         });
     };
 
-    addContributor = async (projectId, teamMemberId, adminId) => {
+    addContributor = async (
+        projectId: string,
+        teamMemberId: string,
+        adminId: string,
+    ) => {
         await this.isProjectBelongsToAdmin(projectId, adminId);
         await teamMemberService.isTeamMemberBelongsToAdmin(
             teamMemberId,
-            adminId
+            adminId,
         );
         const data = await prisma.contributor.create({
             data: { projectId, teamMemberId },
@@ -138,15 +149,15 @@ class ProjectService {
     };
 
     changeContributorStatus = async (
-        projectId,
-        teamMemberId,
-        adminId,
-        status
+        projectId: string,
+        teamMemberId: string,
+        adminId: string,
+        status: ContributorStatus,
     ) => {
         await this.isProjectBelongsToAdmin(projectId, adminId);
         await teamMemberService.isTeamMemberBelongsToAdmin(
             teamMemberId,
-            adminId
+            adminId,
         );
         await prisma.contributor.updateMany({
             where: {
@@ -159,7 +170,7 @@ class ProjectService {
         });
     };
 
-    getContributors = async (projectId, adminId) => {
+    getContributors = async (projectId: string, adminId: string) => {
         await this.isProjectBelongsToAdmin(projectId, adminId);
         const teamMembers = await prisma.teamMember.findMany({
             where: {
@@ -173,10 +184,10 @@ class ProjectService {
             },
         });
 
-        const contributors = await this.getContributorsByProjectId(projectId);
+        const contributors =
+            await this.getContributorsByProjectIdAndStatus(projectId);
 
-        const teamMembersObj = objectifyArr(teamMembers, "id");
-        console.log(teamMembersObj);
+        const teamMembersObj = objectifyArr(teamMembers, 'id');
 
         const contributorsWithDetails = contributors.map((contributor) => {
             return {
@@ -186,10 +197,10 @@ class ProjectService {
             };
         });
 
-        const contributorsObj = objectifyArr(contributors, "teamMemberId");
+        const contributorsObj = objectifyArr(contributors, 'teamMemberId');
 
         const notAssignedContributors = teamMembers.filter(
-            (teamMember) => !contributorsObj[teamMember.id]
+            (teamMember) => !contributorsObj[teamMember.id],
         );
 
         return {
@@ -198,7 +209,7 @@ class ProjectService {
         };
     };
 
-    isProjectBelongsToAdmin = async (id, adminId) => {
+    private isProjectBelongsToAdmin = async (id: string, adminId: string) => {
         const project = await prisma.project.findUnique({
             where: {
                 id,
@@ -206,23 +217,26 @@ class ProjectService {
         });
 
         if (!project) {
-            throw new CustomError("Project does not exist", 404);
+            throw new CustomError('Project does not exist', 404);
         }
         if (project.adminId !== adminId) {
             throw new CustomError(
-                "Forbidden: You are not authorized to perform this action",
-                404
+                'Forbidden: You are not authorized to perform this action',
+                403,
             );
         }
     };
 
-    getContributorsByProjectId = async (id, status) => {
-        const where = {
+    private getContributorsByProjectIdAndStatus = async (
+        id: string,
+        contributorStatus?: ContributorStatus,
+    ) => {
+        const where: Prisma.ContributorWhereInput = {
             projectId: id,
         };
 
-        if (status) {
-            where.status = status;
+        if (contributorStatus) {
+            where.status = contributorStatus;
         }
 
         const contributors = await prisma.contributor.findMany({

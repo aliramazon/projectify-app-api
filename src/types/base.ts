@@ -6,7 +6,7 @@ export enum Roles {
 type AdminId = string;
 
 export interface RequestUser {
-    userId: string;
+    id: string;
     role: Roles;
     belongsTo?: AdminId;
 }

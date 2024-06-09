@@ -80,7 +80,7 @@ class AdminService {
 
         const token = jwt.sign(
             {
-                userId: admin.id,
+                id: admin.id,
                 role: Roles.ADMIN,
             },
             process.env.JWT_SECRET as jwt.Secret,

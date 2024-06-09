@@ -21,17 +21,20 @@ class AuthMiddleware {
                 process.env.JWT_SECRET as jwt.Secret,
             ) as RequestUser;
 
-            req.locals.user = payload;
+            req.locals = {
+                user: payload,
+            };
             next();
         } catch (error) {
-            throw new CustomError(error.message, 500);
+            const err = error as Error;
+            throw new CustomError(err.message, 500);
         }
     };
 
     isAdmin = (req: Request, _, next: NextFunction) => {
         const { locals } = req;
 
-        if (locals.user.role !== Roles.ADMIN) {
+        if (locals && locals.user && locals.user.role !== Roles.ADMIN) {
             throw new CustomError(
                 'Forbidden: You are not authorized to perform this action',
                 403,
@@ -44,7 +47,7 @@ class AuthMiddleware {
     isTeamMember = (req: Request, _, next: NextFunction) => {
         const { locals } = req;
 
-        if (locals.user.role !== Roles.TEAM_MEMBER) {
+        if (locals && locals.user && locals.user.role !== Roles.TEAM_MEMBER) {
             throw new CustomError(
                 'Forbidden: You are not authorized to perform this action',
                 403,

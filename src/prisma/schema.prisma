@@ -44,11 +44,13 @@ type Tasks {
     status      TaskStatus @default(TODO)
 }
 
-model Company {
-    id       String @id @default(auto()) @map("_id") @db.ObjectId
+type Company {
     name     String
     position String
-    adminId  String @unique @db.ObjectId
+}
+
+enum AdminRole {
+    admin
 }
 
 model Admin {
@@ -65,6 +67,8 @@ model Admin {
     createdAt                        DateTime           @default(now())
     updatedAt                        DateTime           @updatedAt
     tasks                            Tasks[]
+    company                          Company?
+    role                             AdminRole          @default(admin)
 }
 
 model Project {
@@ -80,6 +84,10 @@ model Project {
     updatedAt   DateTime      @updatedAt
 }
 
+enum TeamMemberRole {
+    teamMember
+}
+
 model TeamMember {
     id          String                  @id @default(auto()) @map("_id") @db.ObjectId
     firstName   String
@@ -93,6 +101,7 @@ model TeamMember {
     joinDate    DateTime
     createdAt   DateTime                @default(now())
     updatedAt   DateTime                @updatedAt
+    role        TeamMemberRole          @default(teamMember)
 }
 
 model Contributor {

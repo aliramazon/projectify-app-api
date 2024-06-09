@@ -29,7 +29,7 @@ export interface AdminCreateTaskRequestBody {
     due: Date;
 }
 
-export interface AdminTaskByIdRequestParams {
+export interface AdminTaskByIdRequestParams extends core.ParamsDictionary {
     taskId: string;
 }
 

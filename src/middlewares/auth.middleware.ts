@@ -1,10 +1,10 @@
 import jwt from 'jsonwebtoken';
-import { NextFunction, Request } from 'express';
+import { NextFunction, Request, Response } from 'express';
 import { CustomError } from '../utils/';
 import { RequestUser, Roles } from '../types';
 
 class AuthMiddleware {
-    authenticate = (req: Request, _, next: NextFunction) => {
+    authenticate = (req: Request, _: Response, next: NextFunction) => {
         const { headers } = req;
         if (!headers.authorization) {
             throw new CustomError('You are not logged in. Please, log in', 401);
@@ -31,7 +31,7 @@ class AuthMiddleware {
         }
     };
 
-    isAdmin = (req: Request, _, next: NextFunction) => {
+    isAdmin = (req: Request, _: Response, next: NextFunction) => {
         const { locals } = req;
 
         if (locals && locals.user && locals.user.role !== Roles.ADMIN) {
@@ -44,7 +44,7 @@ class AuthMiddleware {
         next();
     };
 
-    isTeamMember = (req: Request, _, next: NextFunction) => {
+    isTeamMember = (req: Request, _: Response, next: NextFunction) => {
         const { locals } = req;
 
         if (locals && locals.user && locals.user.role !== Roles.TEAM_MEMBER) {
